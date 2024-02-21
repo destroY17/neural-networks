@@ -55,7 +55,7 @@ def main():
     # Генерация данных для теста
     x_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
 
-    y_values = gen.generate_random_values(tdc.POINTS_COUNT, (-10, 10))
+    y_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
     y_values = np.array(y_values).reshape(-1, 1)
     y_values = get_normalized_data(y_values)
 
