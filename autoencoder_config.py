@@ -3,4 +3,5 @@
 '''
 Размерность скрытого вектора
 '''
+LAYER_DIMENSION = 100
 ENCODING_DIMENSION = 3

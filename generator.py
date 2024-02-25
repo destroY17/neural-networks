@@ -1,5 +1,6 @@
 import numpy as np
 import train_data_config as tdc
+import data_utils as du
 
 
 def generate_polynomial(count):
@@ -30,13 +31,23 @@ def generate_random_values(count, x_range):
 
 
 def generate_random_values_for_polynomials(polynomials):
-    '''
+    """
     Генерация рандомных значений функций полиномов.
 
     :param polynomials: полиномы
     :return: значения функций
-    '''
+    """
     y_values = []
     for _ in polynomials:
         y_values.append(generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE))
     return y_values
+
+
+def generate_data_to_learn():
+    polynomials = generate_polynomial(tdc.POLYNOMIALS_COUNT)
+
+    train_data = generate_random_values_for_polynomials(polynomials)
+    train_data = np.array(train_data).reshape(-1, tdc.POINTS_COUNT)
+    train_data_normalized = du.get_normalized_data(train_data)
+
+    return train_data_normalized

@@ -5,77 +5,48 @@ import train_data_config as tdc
 import autoencoder_config as ac
 import polynomial_plotter as pp
 import generator as gen
-from sklearn.preprocessing import MinMaxScaler
+import data_utils as du
 
 
-def get_normalized_data(data):
-    """
-    Нормализация данных
-    :param data: данные
-    :return: нормализованные данные
-    """
-    scaler = MinMaxScaler()
-    return scaler.fit_transform(data)
+def generate_test_values():
+    x_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
+
+    y_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
+    y_values = np.array(y_values).reshape(-1, 1)
+
+    return x_values, y_values
 
 
-def calculate_error(y_values, y_values_from_autoencoder):
-    """
-    Подсчет и вывод ошибки в консоль
-    :param y_values: значения оригинальной функции
-    :param y_values_from_autoencoder: значения восстановленной автоэнкодером функции
-    """
-    mse = np.mean(np.square(y_values - y_values_from_autoencoder))
-    print("Mean Squared Error:", mse)
-
-
-def main():
+def test():
     """
     Тестирование работы автоэнкодера.
     Обучение автоэнкодера, проверка его работы на тестовых данных,
     графическое представление оригинальных данных и восстановленных автоэнкодером.
     """
-    # Генерация полиномов
-    polynomials = gen.generate_polynomial(tdc.POLYNOMIALS_COUNT)
+    # Подготовка
+    (x_values, y_values) = generate_test_values()
 
-    # Генерация данных для обучения
-    train_data = gen.generate_random_values_for_polynomials(polynomials)
-    train_data = np.array(train_data).reshape(-1, tdc.POINTS_COUNT)
-    train_data_normalized = get_normalized_data(train_data)
+    # Действие
+    autoencoder = ae.AutoEncoder(input_dimension=tdc.POINTS_COUNT,
+                                 encoding_dimension=ac.ENCODING_DIMENSION,
+                                 layer_dimension=ac.LAYER_DIMENSION)
+    ae.learn(autoencoder)
 
-    # Создание автоэнкодера
-    input_dimension = train_data_normalized.shape[1]
-    autoencoder = ae.build_autoencoder(input_dimension, ac.ENCODING_DIMENSION)
+    y_values_for_autoencoder = du.get_normalized_data(y_values)
+    y_values_for_autoencoder = np.array(y_values_for_autoencoder).reshape(-1, tdc.POINTS_COUNT)
 
-    autoencoder.fit(train_data_normalized,
-                    train_data_normalized,
-                    epochs=50,
-                    batch_size=32,
-                    shuffle=True)
-
-    # Генерация данных для теста
-    x_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
-
-    y_values = gen.generate_random_values(tdc.POINTS_COUNT, tdc.X_RANGE)
-    y_values = np.array(y_values).reshape(-1, 1)
-    y_values = get_normalized_data(y_values)
-
-    # Отрисовка данных теста
-    pp.plot_polynomial(x_values, y_values, tdc.DEGREE, 'Original', 'red')
-
-    # Получение данных из автоэнкодера
-    y_values = np.array(y_values).reshape(-1, tdc.POINTS_COUNT)
-    y_values_from_autoencoder = autoencoder.predict(y_values)
+    y_values_from_autoencoder = autoencoder.predict(y_values_for_autoencoder)
     y_values_from_autoencoder = np.array(y_values_from_autoencoder).reshape(-1, 1)
+    y_values_from_autoencoder = du.get_denormalized_data(y_values_from_autoencoder)
 
-    # Отрисовка данных из автоэнкодера
+    # Проверка
+    pp.plot_polynomial(x_values, y_values, tdc.DEGREE, 'Original', 'red')
     pp.plot_polynomial(x_values, y_values_from_autoencoder, tdc.DEGREE, 'Decoded', 'blue')
 
     plt.legend()
     plt.show()
 
-    # Подсчет ошибки
-    calculate_error(y_values, y_values_from_autoencoder)
+    du.calculate_error(y_values, y_values_from_autoencoder)
 
 
-if __name__ == "__main__":
-    main()
+test()
