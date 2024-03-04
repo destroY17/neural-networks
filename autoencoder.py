@@ -12,8 +12,8 @@ class AutoEncoder(tf.keras.Model):
             tf.keras.layers.Dense(layer_dimension, activation='relu'),
             tf.keras.layers.Dense(encoding_dimension),
         ])
+
         self.decoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(layer_dimension, activation='relu'),
             tf.keras.layers.Dense(layer_dimension, activation='relu'),
             tf.keras.layers.Dense(layer_dimension, activation='relu'),
             tf.keras.layers.Dense(input_dimension),
