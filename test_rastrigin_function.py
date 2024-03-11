@@ -1,31 +1,39 @@
 import numpy as np
+
 from scipy.stats.qmc import Sobol
-from scipy.optimize import minimize
+from scipy.interpolate import make_interp_spline
+
 import tensorflow as tf
+import tensorflow.keras.layers as layers
+
+import matplotlib.pyplot as plt
 
 X_DIMENSION = 20
 ENCODING_DIMENSION = 5
 LAYER_DIMENSION = 500
+LAYER_COUNT = 3
 
 POINTS_COUNT = 1024
 POINTS_COUNT_FOR_TEST = 1024
 
-ITERATIONS_COUNT = 1000
+ITERATIONS_COUNT = 50
 
 
 class AutoEncoder(tf.keras.Model):
-    def __init__(self, input_dimension, encoding_dimension, layer_dimension):
+    def __init__(self, input_dimension, encoding_dimension, layer_dimension, layer_count):
         super().__init__()
 
-        self.encoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(layer_dimension, activation='relu'),
-            tf.keras.layers.Dense(encoding_dimension),
-        ])
+        self.layer_count = layer_count
 
-        self.decoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(layer_dimension, activation='relu'),
-            tf.keras.layers.Dense(input_dimension),
-        ])
+        self.encoder = tf.keras.Sequential()
+        for _ in range(layer_count):
+            self.encoder.add(layers.Dense(layer_dimension, activation='relu'))
+        self.encoder.add(layers.Dense(encoding_dimension))
+
+        self.decoder = tf.keras.Sequential()
+        for _ in range(layer_count):
+            self.decoder.add(layers.Dense(layer_dimension, activation='relu'))
+        self.decoder.add(layers.Dense(input_dimension))
 
     def call(self, x):
         latent_x = self.encoder(x)
@@ -80,50 +88,33 @@ def print_solution(title: str, vector: np.ndarray, optimum: float) -> None:
     print()
 
 
-def use_optimize_methods(autoencoder: AutoEncoder):
-    def decoder_function_for_optimization(x_value):
-        decoder_all_values = decoder_function(np.array(x_value).reshape(-1, ENCODING_DIMENSION))
-        decoder_x_values = decoder_all_values[:, :-1]
-        decoder_y_values = get_y_values(decoder_x_values)
-        return np.array(decoder_y_values).reshape(-1, 1)
-
-    decoder_function = autoencoder.decoder
+def calculate_exhaustive_original(iterations_count: int):
     average_original = 0
-    average_decoder = 0
-    for _ in range(ITERATIONS_COUNT):
-        example_result = minimize(rastrigin,
-                                  generate_points(X_DIMENSION, 1).reshape(-1),
-                                  method="nelder-mead")
+    x = []
+    y = []
 
-        decoder_result = minimize(decoder_function_for_optimization,
-                                  generate_points(ENCODING_DIMENSION, 1).reshape(-1),
-                                  method="nelder-mead")
-        decoder_vector = np.array(decoder_result.x).reshape(-1, ENCODING_DIMENSION)
-
-        print_solution("Результат, полученный перебором точек оригинальной функции",
-                       example_result.x, example_result.fun)
-        print_solution("Результат, полученный перебором точек скрытого пространства",
-                       decoder_function(decoder_vector), decoder_result.fun)
-
-        average_original += example_result.fun
-        average_decoder += decoder_result.fun
-
-    # print("Средний оптимум методом оптимизаций(оригинал):")
-    # print(average_original / ITERATIONS_COUNT)
-    #
-    # print("Средний оптимум методом оптимизаций(декодер):")
-    # print(average_decoder / ITERATIONS_COUNT)
-
-
-def use_exhaustive_search(autoencoder: AutoEncoder):
-    average_original = 0
-    average_decoder = 0
-
-    for _ in range(ITERATIONS_COUNT):
+    for i in range(iterations_count):
         example_x_values = generate_points(X_DIMENSION, POINTS_COUNT)
         example_y_values = get_y_values(example_x_values)
         example_vector, example_optimum = find_optimum(example_x_values, example_y_values)
 
+        average_original += example_optimum
+        x.append(i + 1)
+        y.append(example_optimum)
+
+        print("Наилучшее решение, полученное перебором точек в пространстве решений оригинальной функции:")
+        print("Xo = " + str(example_vector))
+        print("f(Xo) = " + str(example_optimum))
+
+    return x, y
+
+
+def calculate_exhaustive_autoencoder(autoencoder: AutoEncoder, iterations_count: int):
+    average_decoder = 0
+    x = []
+    y = []
+
+    for i in range(iterations_count):
         example_autoencoder_x_values = generate_points(ENCODING_DIMENSION, POINTS_COUNT)
         decoder_function = autoencoder.decoder
         decoder_all_values = decoder_function(example_autoencoder_x_values)
@@ -131,29 +122,70 @@ def use_exhaustive_search(autoencoder: AutoEncoder):
         decoder_y_values = get_y_values(decoder_x_values)
         decoder_vector, decoder_optimum = find_optimum(decoder_x_values, decoder_y_values)
 
-        # print_solution("Результат, полученный перебором точек оригинальной функции",
-        #                example_vector, example_optimum)
-        # print_solution("Результат, полученный перебором точек скрытого пространства",
-        #                np.array(decoder_vector), decoder_optimum)
-
-        average_original += example_optimum
         average_decoder += decoder_optimum
+        x.append(i + 1)
+        y.append(decoder_optimum)
 
-    print("Средний оптимум, полученный перебором точек оригинальной функции:")
-    print(average_original / ITERATIONS_COUNT)
+        print("Наилучшее решение, полученное перебором точек в редуцированном пространстве:")
+        print("Xa = " + str(np.array(decoder_vector)))
+        print("f(Xa) = " + str(decoder_optimum))
 
-    print("Средний оптимум, полученный перебором точек скрытого пространства:")
-    print(average_decoder / ITERATIONS_COUNT)
+    return x, y
+
+
+def interp_spline(x, y):
+    spline = make_interp_spline(np.array(x), np.array(y))
+
+    x_interp = np.linspace(np.array(x).min(), np.array(x).max(), 500)
+    x_interp = x
+    y_interp = spline(x_interp)
+
+    return x_interp, y_interp
+
+
+def test_exhaustive_autoencoder(layer_count):
+    autoencoder = AutoEncoder(input_dimension=X_DIMENSION + 1,
+                              encoding_dimension=ENCODING_DIMENSION,
+                              layer_dimension=LAYER_DIMENSION,
+                              layer_count=layer_count)
+    train_autoencoder(autoencoder)
+    (x, y) = calculate_exhaustive_autoencoder(autoencoder, ITERATIONS_COUNT)
+    return interp_spline(x, y)
+
+
+def test_exhaustive_original():
+    (x, y) = calculate_exhaustive_original(ITERATIONS_COUNT)
+    return interp_spline(x, y)
+
+
+def plot_exhaustive_original(x_original, y_original, color):
+    plt.semilogy(x_original, y_original, ':o', color=f'{color}', label='Оригинал')
+
+
+def plot_exhaustive_autoencoder(x_autoencoder, y_autoencoder, color):
+    plt.semilogy(x_autoencoder, y_autoencoder, ':o', color=f'{color}', label='Автоэнкодер')
+
+
+def create_plot_for_exhaustive():
+    plt.figure(figsize=(20, 6))
+    plt.xlabel("Номер эксперимента")
+    plt.ylabel("Значение оптимума")
+
+
+def test_exhaustive_search():
+    (x_original, y_original) = test_exhaustive_original()
+    (x_autoencoder, y_autoencoder) = test_exhaustive_autoencoder(LAYER_COUNT)
+
+    create_plot_for_exhaustive()
+    plot_exhaustive_original(x_original, y_original, color='blue')
+    plot_exhaustive_autoencoder(x_autoencoder, y_autoencoder, color='red', layer_count=LAYER_COUNT)
+
+    plt.legend()
+    plt.show()
 
 
 def main():
-    autoencoder = AutoEncoder(input_dimension=X_DIMENSION + 1,
-                                 encoding_dimension=ENCODING_DIMENSION,
-                                 layer_dimension=LAYER_DIMENSION)
-    train_autoencoder(autoencoder)
-
-   # use_optimize_methods(autoencoder)
-    use_exhaustive_search(autoencoder)
+    test_exhaustive_search()
 
 
 if __name__ == "__main__":
